@@ -536,13 +536,13 @@ stop_transaction() { # what
 # decoder's Unicode equivalence, so a file with neither "keptDisplay" nor a
 # backslash in it has none of them and is not read further. Any of these
 # makes the journal malformed, as for a wrong type, and nothing is undone.
-# With the optional `session` argument the same top-level walker checks
-# session keys for duplicates instead of checking display records, so mode
-# and owner are never trusted through plutil's last-key-wins interpretation.
+# With the optional `session` argument the walker checks session keys and
+# the identity fields inside ownerIdentity for duplicates instead of checking
+# display records, so mode and owner never rely on plutil's last-key-wins view.
 record_text_problems() { # file [session]
   local LC_ALL=C
   local text rest raw key c token depth str plain scalar number esc hex lost
-  local n_low=0 n_lit=0 n_boot=0 digits sig exp e10 lead seen="" label=state.json
+  local n_low=0 n_lit=0 n_boot=0 digits sig exp e10 lead seen="" scope="" label=state.json
   str='^"([^"\\]|\\.)*"'
   plain='^[^]["{}]+'
   scalar='^[^],}[:space:]]+'
@@ -568,7 +568,17 @@ record_text_problems() { # file [session]
   while :; do
     rest="${rest#"${rest%%[![:space:]]*}"}"
     # An empty object, or a comma before the end, which the app accepts.
-    [[ "${rest:0:1}" == "}" ]] && break
+    if [[ "${rest:0:1}" == "}" ]]; then
+      [[ -n "$scope" ]] || break
+      scope=""
+      rest="${rest:1}"
+      rest="${rest#"${rest%%[![:space:]]*}"}"
+      case "${rest:0:1}" in
+        ,) rest="${rest:1}"; continue ;;
+        '}') break ;;
+        *) echo "$lost"; return 0 ;;
+      esac
+    fi
     [[ "$rest" =~ $str ]] || { echo "$lost"; return 0; }
     raw="${BASH_REMATCH[0]}"
     rest="${rest:${#raw}}"
@@ -596,8 +606,9 @@ record_text_problems() { # file [session]
     done
     key+="$raw"
     if [[ "${2:-}" == session ]]; then
-      case "$key" in
-        mode|startedAt|endsAt|extensions|ownerPID|ownerIdentity|ownerExecutable)
+      case "$scope:$key" in
+        :mode|:startedAt|:endsAt|:extensions|:ownerPID|:ownerIdentity|:ownerExecutable|ownerIdentity:startedAt|ownerIdentity:startedAtMicros|ownerIdentity:bootSession)
+          [[ -z "$scope" ]] || key="$scope.$key"
           if [[ "$seen" == *"|$key|"* ]]; then
             echo "$key is repeated in session.json; the app reads the first and plutil the last"
             return 0
@@ -609,6 +620,11 @@ record_text_problems() { # file [session]
     [[ "${rest:0:1}" == : ]] || { echo "$lost"; return 0; }
     rest="${rest:1}"
     rest="${rest#"${rest%%[![:space:]]*}"}"
+    if [[ "${2:-}" == session && -z "$scope" && "$key" == ownerIdentity && "${rest:0:1}" == '{' ]]; then
+      scope=ownerIdentity
+      rest="${rest:1}"
+      continue
+    fi
     token=""
     case "${rest:0:1}" in
       '"')
@@ -678,7 +694,7 @@ record_text_problems() { # file [session]
     rest="${rest#"${rest%%[![:space:]]*}"}"
     case "${rest:0:1}" in
       ,) rest="${rest:1}" ;;
-      '}') break ;;
+      '}') [[ -n "$scope" ]] || break ;;
       *) echo "$lost"; return 0 ;;
     esac
   done

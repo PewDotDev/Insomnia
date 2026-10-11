@@ -2672,13 +2672,50 @@ final class RecoveryScriptTests: XCTestCase {
         }
     }
 
+    func testConflictingOwnerIdentityFieldsAreRefusedByBothScripts() throws {
+        let fields = ["startedAt", "startedAtMicros", "bootSession"]
+        let firstValues = ["1767225599", "-1", #""old-boot""#]
+        let lastValues = ["1767225600", "17", #""fixture-boot""#]
+        var inputs: [(label: String, bytes: Data)] = []
+        for (i, field) in fields.enumerated() {
+            for escaped in [false, true] {
+                let secondKey = escaped ? "\(backslash)u00\(String(field.utf8.first!, radix: 16))\(field.dropFirst())" : field
+                let json = "{\"ownerIdentity\":{\"\(field)\":\(firstValues[i]),\"\(secondKey)\":\(lastValues[i])}}"
+                inputs.append(("\(field)-\(escaped)", Data(json.utf8)))
+            }
+        }
+        inputs.append(("mode-after-owner", Data(#"{"mode":"timed","ownerIdentity":{"startedAt":1767225600,"startedAtMicros":17,"bootSession":"fixture-boot"},"mode":"unlimited"}"#.utf8)))
+        inputs.append(("escaped-owner", Data("{\"\(backslash)u006fwnerIdentity\":{\"startedAt\":1767225599,\"startedAt\":1767225600}}".utf8)))
+        let controls = [
+            #"{"startedAt":"2026-01-01T00:00:00Z","ownerIdentity":{"startedAt":1767225600,"startedAtMicros":17,"bootSession":"fixture-boot"},"mode":"unlimited"}"#,
+            #"{"extra":{"ownerIdentity":{"startedAt":1,"startedAt":2}},"ownerIdentity":{"startedAt":1767225600,"extra":{"startedAt":1,"startedAt":2},"startedAtMicros":17,"bootSession":"fixture-boot"}}"#,
+            #"{"ownerIdentity":null,"mode":"unlimited"}"#,
+        ]
+        for (i, json) in controls.enumerated() {
+            inputs.append(("control-\(i)", Data(json.utf8)))
+        }
+        for script in ["backstop.sh", "uninstall.sh"] {
+            let printed = try recordTextProblems(inputs, script: script, session: true)
+            for field in fields {
+                for escaped in [false, true] {
+                    XCTAssertEqual(printed["\(field)-\(escaped)"], "ownerIdentity.\(field) is repeated in session.json; the app reads the first and plutil the last\n", script)
+                }
+            }
+            XCTAssertEqual(printed["mode-after-owner"], "mode is repeated in session.json; the app reads the first and plutil the last\n", script)
+            XCTAssertEqual(printed["escaped-owner"], "ownerIdentity.startedAt is repeated in session.json; the app reads the first and plutil the last\n", script)
+            for i in controls.indices {
+                XCTAssertEqual(printed["control-\(i)"], "", script)
+            }
+        }
+    }
+
     /// record_text_problems as it is in each script, run on its own over
     /// exact bytes: what it prints, or nothing.
-    private func recordTextProblems(_ inputs: [(label: String, bytes: Data)], script: String = "backstop.sh") throws -> [String: String] {
+    private func recordTextProblems(_ inputs: [(label: String, bytes: Data)], script: String = "backstop.sh", session: Bool = false) throws -> [String: String] {
         let f = try ScriptFixture()
         defer { f.destroy() }
         let runner = f.root.appendingPathComponent("record-text-problems.sh")
-        try ("set -euo pipefail\n" + Self.recordTextProblemsSource(script) + "\nrecord_text_problems \"$1\"\n")
+        try ("set -euo pipefail\n" + Self.recordTextProblemsSource(script) + "\nrecord_text_problems \"$1\"" + (session ? " session" : "") + "\n")
             .write(to: runner, atomically: true, encoding: .utf8)
         var printed: [String: String] = [:]
         for (i, input) in inputs.enumerated() {

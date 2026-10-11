@@ -115,6 +115,40 @@ assert_restored() {
   [[ "$(/usr/bin/plutil -extract extra.keep raw -o - "$LAB/home/state.json")" == 1 ]] || fail 'unknown journal field lost'
 }
 
+# A live last-value identity must not hide conflicting ownership from the
+# app's first-value decoder, including escaped spellings of the same key.
+for field in startedAt startedAtMicros bootSession; do
+  for escaped in no yes; do
+    reset
+    second="$field"
+    if [[ "$escaped" == yes ]]; then
+      case "$field" in
+        startedAt|startedAtMicros) second='\'"u0073${field:1}" ;;
+        bootSession) second='\'"u0062${field:1}" ;;
+      esac
+    fi
+    case "$field" in
+      startedAt)
+        first=1767225599
+        identity="\"$second\":1767225600,\"startedAtMicros\":17,\"bootSession\":\"fixture-boot\"" ;;
+      startedAtMicros)
+        first=-1
+        identity="\"startedAt\":1767225600,\"$second\":17,\"bootSession\":\"fixture-boot\"" ;;
+      bootSession)
+        first='"old-boot"'
+        identity="\"startedAt\":1767225600,\"startedAtMicros\":17,\"$second\":\"fixture-boot\"" ;;
+    esac
+    printf '{"mode":"unlimited","startedAt":"2026-01-01T00:00:00Z","extensions":[],"ownerPID":4242,"ownerIdentity":{"%s":%s,%s}}\n' "$field" "$first" "$identity" > "$LAB/home/session.json"
+    printf 'Thu Jan  1 00:00:00 2026 S %s %s\n' "$(id -u)" "$LAB/Insomnia.app/Contents/MacOS/Insomnia" > "$LAB/process"
+    run
+    assert_restored
+    quarantined=("$LAB/home/"session.json.unreadable-*)
+    [[ -f "${quarantined[0]}" ]] || fail "conflicting ownerIdentity.$field lost evidence"
+    /usr/bin/grep -q "ownerIdentity.$field is repeated" "$LAB/home/Logs/insomnia.log" || fail "conflicting ownerIdentity.$field was not diagnosed"
+    printf 'PASS: conflicting ownerIdentity.%s (escaped: %s) restores and quarantines evidence\n' "$field" "$escaped"
+  done
+done
+
 reset
 unlimited
 /usr/bin/plutil -insert ownerIdentity -json '{"startedAt":1767225600,"startedAtMicros":-1,"bootSession":"fixture-boot"}' "$LAB/home/session.json"

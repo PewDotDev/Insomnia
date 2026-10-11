@@ -32,6 +32,13 @@ final class RecoveryScriptTests: XCTestCase {
 
     // MARK: - backstop.sh
 
+    func testUnlimitedRecoveryFixtureSuite() throws {
+        let suite = ScriptFixture.productionScripts.deletingLastPathComponent()
+            .appendingPathComponent("Tests/Shell/backstop-unlimited.sh")
+        let r = try fx.run(suite)
+        XCTAssertEqual(r.status, 0, r.stdout + r.stderr)
+    }
+
     func testPrivilegedCommandFailureExitsNonzeroAndKeepsJournal() throws {
         try fx.writeSession(endsAt: Date(timeIntervalSinceNow: -60))
         try fx.writeState(#"{"sleepDisabledByUs":true,"lowPowerSetByUs":true,"frozenProcesses":[],"dockerFrozen":false,"extra":"keep"}"#)
@@ -792,7 +799,7 @@ final class RecoveryScriptTests: XCTestCase {
             let file = dir.appendingPathComponent("\(i).json")
             try data.write(to: file)
             files.append(file.path)
-            app.append((try? Store.makeDecoder().decode(Session.self, from: data)).map { String(Int($0.endsAt.timeIntervalSince1970)) } ?? "")
+            app.append((try? Store.makeDecoder().decode(Session.self, from: data)).flatMap { $0.endsAt }.map { String(Int($0.timeIntervalSince1970)) } ?? "")
         }
         XCTAssertEqual(app.filter { !$0.isEmpty }.count, 11, "the app reads the first eleven: \(Array(zip(cases, app)))")
         for script in [fx.backstop, fx.uninstall] {
@@ -1251,6 +1258,22 @@ final class RecoveryScriptTests: XCTestCase {
     }
 
     // MARK: - uninstall.sh
+
+    func testUninstallPreservesValidUnlimitedEvidenceWhenRestoreFails() throws {
+        try fx.installMachinery()
+        try #"{"mode":"unlimited","startedAt":"2026-01-01T00:00:00Z","extensions":[],"ownerPID":4242,"ownerExecutable":"/development build/Insomnia"}"#
+            .write(to: fx.session, atomically: true, encoding: .utf8)
+        try fx.writeState(#"{"sleepDisabledByUs":true,"lowPowerSetByUs":false,"frozenProcesses":[],"dockerFrozen":false}"#)
+        fx.setMode("sudo", "fail")
+
+        let r = try fx.run(fx.uninstall)
+
+        XCTAssertNotEqual(r.status, 0)
+        XCTAssertTrue(fx.exists(fx.session), "failed undo must preserve session evidence")
+        XCTAssertTrue(fx.exists(fx.plist), "recovery must remain installed")
+        XCTAssertTrue(r.stderr.contains("session.json is still present"), r.stderr)
+        XCTAssertFalse(r.stderr.contains("is not a session"), r.stderr)
+    }
 
     func testUninstallAbortsWhenRestoreFailsAndKeepsEverything() throws {
         try fx.installMachinery()
@@ -2672,7 +2695,7 @@ final class RecoveryScriptTests: XCTestCase {
     private static func recordTextProblemsSource(_ script: String) throws -> String {
         let text = try String(contentsOf: ScriptFixture.productionScripts.appendingPathComponent(script), encoding: .utf8)
         let lines = text.components(separatedBy: "\n")
-        let start = try XCTUnwrap(lines.firstIndex(of: "record_text_problems() { # file"), script)
+        let start = try XCTUnwrap(lines.firstIndex { $0.hasPrefix("record_text_problems() {") }, script)
         let end = try XCTUnwrap(lines[start...].firstIndex(of: "}"), script)
         return lines[start...end].joined(separator: "\n")
     }

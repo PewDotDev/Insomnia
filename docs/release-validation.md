@@ -187,6 +187,10 @@ is performed. Do not replace "not run" with "passed" based on source review.
 | --- | --- |
 | Normal end, deadline expiry, and repeated Quit restore live power state | Not run for release fixes |
 | Force-quit followed by launchd deadline recovery and retry after failure | Not run |
+| Unlimited start from ∞ after Minutes: immediate activation regardless of inputs, accessible labeling, ∞ display, manual end and normal Quit restore live power state | Not run |
+| Timed-to-unlimited conversion, including a timed session resumed after a crash: keep-awake remains active beyond its former deadline; failed conversion preserves the original timed session | Not run |
+| Unlimited force-quit followed by owner-aware launchd recovery and retry after failure; relaunch before helper cleanup restores rather than resumes; development/non-default bundle paths with spaces remain active while their recorded owner lives | Not run |
+| Unlimited battery/thermal safety ending and safe recovery of journaled lid actions | Not run |
 | Unreadable session.json moved aside by the app at launch and by the agent, then uninstall with and without --purge | Not run |
 | session.json without read permission during a session: the agent restores sleep within a minute and renames the file to session.json.unreadable-<time>, or the app does both at launch and notifies; after fixing the copy's permissions, a relaunch does not resume the session | Not run |
 | Reboot/login with active or dirty journals | Not run |

@@ -9,12 +9,14 @@
 </p>
 
 <p align="center">
-  A macOS menu bar app for timed or unlimited awake sessions. Choose how long
-  your Mac stays awake, what happens when the lid closes, and see when
-  something could not be undone.
+  A macOS menu bar app for timed or unlimited awake sessions. Insomnia is an
+  eye icon that lives in your MacBook menu bar. It has no Dock icon and no
+  main window. Choose how long your Mac stays awake, what happens when the
+  lid closes, and see when something could not be undone.
 </p>
 
 <p align="center">
+  <a href="https://getinsomnia.app"><strong>Website</strong></a> ·
   <a href="#install"><strong>Install</strong></a> ·
   <a href="#using-it"><strong>Using it</strong></a> ·
   <a href="#what-happens-when-the-lid-closes"><strong>Lid close</strong></a> ·
@@ -206,7 +208,7 @@ It doesn't press Enter unless you turn that on. Mark a pane you don't type in.
 </details>
 
 <details>
-<summary><strong>Chrome, Chromium and Arc throttling</strong></summary>
+<summary><strong>Chrome, Chromium, Arc and Comet throttling</strong></summary>
 
 These browsers slow down windows that macOS reports as hidden, which includes
 every window while the lid is closed. If a running browser lacks
@@ -215,7 +217,7 @@ every window while the lid is closed. If a running browser lacks
 [browser] unthrottled". It asks first, because relaunching quits the browser,
 and tabs come back only if the browser reopens them on startup. Some web apps
 may still stop with the lid closed.
-[docs/extras.md](docs/extras.md#chrome-chromium-and-arc-throttling) has the
+[docs/extras.md](docs/extras.md#chrome-chromium-arc-and-comet-throttling) has the
 details.
 
 </details>
